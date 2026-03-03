@@ -1,3 +1,6 @@
-ACSST5Y2024.S1701-Data.csv
-CPS-FSS 2024 (food insecurity).csv
+# Large data files (keep local only)
+data/raw-data/child_poverty_rate_2024.csv
+data/raw-data/food_insecurity_2024.csv
 
+# Large shapefiles
+data/raw-data/shp_file/county/

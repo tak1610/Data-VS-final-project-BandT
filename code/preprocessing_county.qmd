@@ -1,0 +1,286 @@
+---
+title: "Preprocessing county"
+format: html
+---
+
+# 1 Create IL file
+## child povery and voting
+```{python}
+import pandas as pd
+child_pov_county = pd.read_csv(r"data\derived-data\child_pov_county.csv")
+child_pov_il = child_pov_county[child_pov_county["state_fips"] == 17].copy()
+child_pov_il = child_pov_il.rename(columns={
+    "fips": "county_fips",
+    "county_fips":"county_fips_3"})
+child_pov_il["county_fips"] = (
+    child_pov_il["county_fips"]
+    .astype(str)
+    .str.replace(r"\.0$", "", regex=True)
+    .str.strip()
+    .str.zfill(5)
+)
+child_pov_il["county_fips"]
+len(child_pov_il)
+
+vote_county_2024 = pd.read_csv(r"data\derived-data\vote_county_2024.csv")
+vote_county_2024["county_fips"] = vote_county_2024["county_fips"].astype(str).str.zfill(5)
+vote_county_2024["county_fips"] = (
+    vote_county_2024["county_fips"].astype(str)
+    .str.replace(r"\.0$", "", regex=True)
+    .str.strip()
+    .str.zfill(5)
+)
+vote_2024_il = vote_county_2024[vote_county_2024["county_fips"].str.startswith("17")].copy()
+len(vote_2024_il)
+
+vote_2024_il.to_csv(r"data\derived-data\vote_2024_il.csv", index=False)
+child_pov_il.to_csv(r"data\derived-data\child_pov_il.csv", index=False)
+```
+
+## CEP school → county level
+```{python}
+import pandas as pd
+
+# -------------------------
+# Load files
+# -------------------------
+cep_school = pd.read_csv(r"data\derived-data\cep_school.csv")
+
+#-----------------------------------
+# IL school data with county codes
+#-----------------------------------
+cep_school["isp"] = pd.to_numeric(cep_school["isp"], errors="coerce")
+cep_school[cep_school["state_abbrev"] == "IL"]["isp"].isna().sum()
+# Subset the data to Illinois data
+cep_school_IL = cep_school[cep_school["state_abbrev"] == "IL"]
+# Sanity check: school IDs are unique across the observations?
+len(cep_school_IL)
+cep_school_IL["school_id"].nunique()
+#cep_school_IL.to_csv("cep_school_IL.csv", index=False)
+# Extract county ISBE code
+cep_school_IL["county_code_ISBE"] = cep_school_IL["lea_id"].str.split("-").str[1]
+# Remove county code "000" and "108" because they are not county institutions
+cep_school_IL = cep_school_IL[
+    ~cep_school_IL["county_code_ISBE"].isin(["000", "108"])
+]
+# Convert ISBE code into Fips code
+cep_school_IL["county_code_ISBE"] = cep_school_IL["county_code_ISBE"].astype(int)
+cep_school_IL["county_fips"] = (
+    "17" +
+    (2 * cep_school_IL["county_code_ISBE"] - 1)
+        .astype(str)
+        .str.zfill(3)
+)
+cep_school_IL["county_fips"].nunique() # This returns 102, equal to the number of counties in IL
+cep_school_IL_county = cep_school_IL.copy()
+#cep_school_IL_county.to_csv("cep_school_IL_county.csv", index=False)
+
+#-----------------------------------
+# Aggregate data at the county level
+#-----------------------------------
+# Sanithy Check: null values
+cep_school_IL_county.isna().sum() # this returns zero
+# Aggregate data
+cep_county_IL = (
+    cep_school_IL_county
+    .groupby("county_fips")
+    .apply(lambda df: pd.Series({
+        "total_schools": df["school_id"].count(),
+        "total_students": df["enrollment"].sum(),
+        "cep_school_rate": (df["cep_participation"]=="Yes").mean(),
+        "cep_student_rate":
+            df.loc[df["cep_participation"]=="Yes","enrollment"].sum()
+            / df["enrollment"].sum(),
+        "weighted_isp":
+            (df["isp"]*df["enrollment"]).sum()
+            / df["enrollment"].sum()
+    }))
+    .reset_index()
+)
+cep_county_IL.to_csv(r"data\derived-data\cep_county_IL.csv", index=False)
+cep_county_IL["county_fips"]
+```
+
+# Create MO file
+## child povery and voting
+```{python}
+import pandas as pd
+child_pov_mo = child_pov_county[child_pov_county["state_fips"] == 29].copy()
+child_pov_mo = child_pov_mo.rename(columns={
+    "fips": "county_fips",
+    "county_fips":"county_fips_3"})
+child_pov_mo["county_fips"] = (
+    child_pov_mo["county_fips"]
+    .astype(str)
+    .str.replace(r"\.0$", "", regex=True)
+    .str.strip()
+    .str.zfill(5)
+)
+child_pov_mo["county_fips"]
+len(child_pov_mo)
+
+vote_county_2024["county_fips"] = vote_county_2024["county_fips"].astype(str).str.zfill(5)
+vote_county_2024["county_fips"] = (
+    vote_county_2024["county_fips"].astype(str)
+    .str.replace(r"\.0$", "", regex=True)
+    .str.strip()
+    .str.zfill(5)
+)
+vote_2024_mo = vote_county_2024[vote_county_2024["county_fips"].str.startswith("29")].copy()
+len(vote_2024_mo)
+
+vote_2024_mo.to_csv(r"data\derived-data\vote_2024_mo.csv", index=False)
+child_pov_mo.to_csv(r"data\derived-data\child_pov_mo.csv", index=False)
+```
+
+## CEP school → county level
+```{python}
+import pandas as pd
+
+# -------------------------
+# CEP file
+# -------------------------
+cep_school["isp"] = pd.to_numeric(cep_school["isp"], errors="coerce")
+cep_school[cep_school["state_abbrev"] == "MO"]["isp"].isna().sum()
+# Subset the data to Illinois data
+cep_school_MO = cep_school[cep_school["state_abbrev"] == "MO"]
+# Sanity check: school IDs are unique across the observations?
+len(cep_school_MO)
+cep_school_MO["school_id"].nunique()
+cep_school_MO["lea_id"].nunique()
+cep_school_MO.isna().sum()
+#cep_school_MO.to_csv("cep_school_MO.csv", index=False)
+
+# -----------------------------------
+# Crosswalk (school id → county fips)
+# -----------------------------------
+# laod necessary data sets
+ccd_sch = pd.read_csv(r"data\raw-data\crosswalk\ccd_sch.csv")
+ncessch = pd.read_excel(r"data\raw-data\crosswalk\EDGE_GEOCODE.xlsx")
+# Subset to MO data
+ccd_sch_mo = ccd_sch[ccd_sch["FIPST"] == 29]
+ncessch_mo = ncessch[ncessch["OPSTFIPS"] == 29]
+len(ccd_sch_mo)
+len(ncessch_mo)
+len(cep_school_MO)
+ccd_sch_mo["SCH_NAME"].nunique()
+# Add county fips data to ccd_sch_mo
+ccd_sch_mo["NCESSCH"] = ccd_sch_mo["NCESSCH"].astype(str)
+ncessch_mo["NCESSCH"] = ncessch_mo["NCESSCH"].astype(str)
+ccd_with_county = ccd_sch_mo.merge(
+    ncessch_mo[["NCESSCH", "CNTY"]],
+    on="NCESSCH",
+    how="left"
+)
+ccd_with_county = ccd_with_county.rename(
+    columns={"CNTY": "county_fips"}
+)
+
+# ------------------------------------
+# Merge county fips code with cep data
+# ------------------------------------
+# -------------------------
+# (1) Hypothesis check: ST_LEAID (MO-036137) vs CEP lea_id (036-137)
+# -------------------------
+# Build comparable LEA keys
+ccd_mo = ccd_with_county.copy()
+cep_mo = cep_school_MO.copy()
+ccd_mo["lea6"] = ccd_mo["ST_LEAID"].str.split("-").str[-1].str.zfill(6)     # "036137"
+ccd_mo["lea_id_from_ccd"] = ccd_mo["lea6"].str[:3] + "-" + ccd_mo["lea6"].str[3:]  # "036-137"
+
+cep_mo["lea_id"] = cep_mo["lea_id"].astype(str)
+cep_mo["lea6"] = cep_mo["lea_id"].str.replace("-", "", regex=False).str.zfill(6)
+
+# Coverage check: what share of CEP lea_id exists in CCD?
+lea_match_rate = cep_mo["lea6"].isin(set(ccd_mo["lea6"])).mean()
+print(f"LEA match rate (CEP lea_id in CCD): {lea_match_rate:.3f}")
+# This returns 98%, so we can moev on with this method
+
+# -----------------------------------
+# Build merge keys from CCD
+# -----------------------------------
+ccd_merge = ccd_with_county.copy()
+# Extract 6-digit LEA code
+ccd_merge["lea6"] = (
+    ccd_merge["ST_LEAID"]
+    .str.split("-").str[-1]
+    .str.zfill(6)
+)
+cep_mo["lea6"] = cep_mo["lea_id"].str.replace("-", "", regex=False).str.zfill(6)
+# Construct a LEA-to-county crosswalk using the modal (most frequent) county
+# Because some lead ids have several schools, which is difficult to detect which county each of them is in
+lea_county_mode = (
+    ccd_merge.dropna(subset=["county_fips"])
+      .groupby(["lea6", "county_fips"]).size()
+      .reset_index(name="n")
+      .sort_values(["lea6", "n"], ascending=[True, False])
+      .drop_duplicates("lea6")
+      [["lea6", "county_fips"]]
+)
+# Merge with cep
+cep_county_mo = cep_mo.merge(lea_county_mode, on="lea6", how="left")
+
+# sanity checks
+print("CEP rows:", len(cep_county_mo))
+print("Missing county_fips:", cep_county_mo["county_fips"].isna().sum())
+print("Match rate:", 1 - cep_county_mo["county_fips"].isna().mean())
+print("Unique counties in CEP:", cep_county_mo["county_fips"].nunique()) # This means about 20 counties are NA (not eligible for CEP)
+
+# Flag LEAs that span multiple counties
+lea_county_n = (
+    ccd_mo.groupby("lea6")["county_fips"].nunique().reset_index(name="n_counties")
+)
+multi_lea = set(lea_county_n.loc[lea_county_n["n_counties"] > 1, "lea6"])
+cep_county_mo["multi_county_lea"] = cep_county_mo["lea6"].isin(multi_lea)
+
+print("Rows in multi-county LEAs:", cep_county_mo["multi_county_lea"].sum())
+
+# 📌 Bottom line
+#✅ It is plausible and expected that some counties have zero eligible CEP schools in the official 2024–25 CEP list.
+#That means your ~20 “missing” counties from the CEP dataset are not necessarily missing due to data errors — they may genuinely have no eligible schools.
+#This reinforces your earlier reasoning:
+# counties with no eligible schools should be treated as undefined/structural rather than as random missing data.
+
+#--------------------------
+# Aggregate county data
+#---------------------------
+cep_county_mo.isna().sum() 
+cep_county_mo_clean = cep_county_mo.dropna(subset=["county_fips"]).copy()
+cep_county_MO = (
+    cep_county_mo_clean
+        .groupby("county_fips")
+        .agg(
+            n_eligible_schools=("school_id", "count"),
+            n_participating=("cep_participation", lambda x: (x == "Yes").sum())
+        )
+        .reset_index()
+)
+
+cep_county_MO["cep_school_rate"] = (
+    cep_county_MO["n_participating"] / cep_county_MO["n_eligible_schools"]
+)
+
+print("Number of counties:", len(cep_county_MO))
+print("Mean CEP school rate:", cep_county_MO["cep_school_rate"].mean())
+print("Min/Max CEP school rate:",
+      cep_county_MO["cep_school_rate"].min(),
+      cep_county_MO["cep_school_rate"].max())
+
+cep_county_MO.to_csv(r"data\derived-data\cep_county_MO.csv", index=False)
+```
+
+
+```{python}
+import pandas as pd
+
+df = pd.read_csv("data/raw-data/fire.csv")
+df.head()
+```
+
+
+```{python}
+import pandas as pd
+
+df = pd.read_csv("data/raw-data/fire.csv")
+df.head()
+```
