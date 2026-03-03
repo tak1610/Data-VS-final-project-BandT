@@ -45,6 +45,7 @@ Large raw data files are not included in this repository due to GitHub size limi
 Please download the following datasets and place them in:
 
 data/raw-data
+data/raw-data/shp_file\county
 
 ### Required Files
 
@@ -52,14 +53,24 @@ data/raw-data
    Source: U.S. Census Bureau (ACS Table S1701 - Poverty Status in the Past 12 Months, 2024: ACS 5-Year Estimates Subject Tables)
    URL: https://data.census.gov/table/ACSST5Y2024.S1701?q=S1701:+Poverty+Status+in+the+Past+12+Months&y=2024
 
-2. ACSST1Y2024.S1701-Data.csv  
+2. food_insecurity_2024.csv  
    Source: U.S. Census Bureau (Food Security, CPS Supplement, CSV)  
    URL: https://www.census.gov/data/datasets/time-series/demo/cps/cps-supp_cps-repwgt/cps-food-security.html
+
+3. tl_2025_us_county.shp and other relevant files
+   Source: U.S. Census Bureau 
+   URL: https://www2.census.gov/geo/tiger/TIGER2025/COUNTY/
 
 After downloading, ensure the folder structure is:
 
 data/
   raw-data/
+    county/
+        tl_2025_us_county.cpg
+        tl_2025_us_county.dbf
+        tl_2025_us_county.prj
+        tl_2025_us_county.shp
+        tl_2025_us_county.shx
     child_poverty_rate_2024.csv
     food_insecurity_2024.csv
 
