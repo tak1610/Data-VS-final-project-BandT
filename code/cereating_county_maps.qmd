@@ -1,0 +1,355 @@
+---
+title: "county level"
+format: html
+---
+
+# Create maps and scatterplots 
+## mapping policies (cep rate and NSLP spending vs child well-being variables)
+### IL map
+```{python}
+import pandas as pd
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import numpy as np
+
+# =====================================================
+# 1. File paths (adjust if needed)
+# =====================================================
+
+CEP_CSV  = r"..\data\derived-data\cep_county_IL.csv"
+POV_CSV  = r"..\data\derived-data\child_pov_il.csv"
+VOTE_CSV = r"..\data\derived-data\vote_2024_il.csv"
+
+# =====================================================
+# 2. Load datasets
+# =====================================================
+cep  = pd.read_csv(CEP_CSV)     # Must contain: county_fips, cep_school_rate
+pov  = pd.read_csv(POV_CSV)     # Must contain: county_fips, poverty_rate_children
+vote = pd.read_csv(VOTE_CSV)    # Must contain: county_fips, dem_margin
+
+# Ensure county_fips is a 5-digit string
+for df in (cep, pov, vote):
+    df["county_fips"] = df["county_fips"].astype(str).str.zfill(5)
+# Divide child pov rate by 100
+pov["poverty_rate_children"] = pov["poverty_rate_children"] / 100
+
+# =====================================================
+# 3. Load Illinois county shapefile
+# =====================================================
+url = "https://www2.census.gov/geo/tiger/TIGER2024/COUNTY/tl_2024_us_county.zip"
+counties = gpd.read_file(url)
+gdf = counties.copy()
+
+# Construct 5-digit county FIPS from TIGER columns
+gdf["county_fips"] = (
+    gdf["STATEFP"].astype(str).str.zfill(2) +
+    gdf["COUNTYFP"].astype(str).str.zfill(3)
+)
+
+# Filter to Illinois only (STATEFP = 17)
+gdf_il = gdf[gdf["STATEFP"].astype(str).str.zfill(2) == "17"].copy()
+
+# Reproject for better map appearance
+gdf_il = gdf_il.to_crs(epsg=5070)
+
+# =====================================================
+# 4. Merge county-level metrics
+# =====================================================
+df_il = (
+    cep[["county_fips", "cep_school_rate"]]
+    .merge(pov[["county_fips", "poverty_rate_children"]],
+           on="county_fips", how="left")
+    .merge(vote[["county_fips", "dem_margin"]],
+           on="county_fips", how="left")
+)
+
+gdf_il = gdf_il.merge(df_il, on="county_fips", how="left")
+
+# =====================================================
+# 5. Mapping function (save as PNG for slides)
+# =====================================================
+def display_map(gdf, column, title,
+                cmap="viridis",
+                vmin=None, vmax=None,
+                center_zero=False):
+
+    fig, ax = plt.subplots(figsize=(8.5, 6))
+    ax.set_axis_off()
+
+    # Symmetric scale for political margin
+    if center_zero:
+        values = gdf[column].dropna()
+        max_abs = float(np.nanmax(np.abs(values))) if len(values) else 1.0
+        vmin, vmax = -max_abs, max_abs
+        cmap = "RdBu"
+
+    gdf.plot(
+        column=column,
+        ax=ax,
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+        legend=True,
+        legend_kwds={"shrink": 0.75},
+        edgecolor="white",
+        linewidth=0.4
+    )
+
+    ax.set_title(title, fontsize=14)
+    filename = title.replace(" ", "_").replace("(", "").replace(")", "")
+    plt.savefig(f"../figures/maps/{filename}.png", dpi=300, bbox_inches="tight")
+    plt.tight_layout()
+    plt.show()
+
+# =====================================================
+# 6. Generate maps for presentation
+# =====================================================
+
+# Democratic margin (diverging scale centered at zero)
+display_map(
+    gdf_il,
+    column="dem_margin",
+    title="Illinois Counties: Democratic Margin (2024)",
+    center_zero=True
+)
+
+# Child poverty rate
+display_map(
+    gdf_il,
+    column="poverty_rate_children",
+    title="Illinois Counties: Child Poverty Rate"
+)
+
+# CEP participation rate
+display_map(
+    gdf_il,
+    column="cep_school_rate",
+    title="Illinois Counties: CEP Participation Rate (Share of Schools)",
+    vmin=0,
+    vmax=1
+)
+```
+
+### IL Scatter plot
+```{python}
+# Scatter plot
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Merge everything into one dataframe
+df_analysis = (
+    df_il[["county_fips", "dem_margin",
+           "poverty_rate_children",
+           "cep_school_rate"]]
+)
+
+sns.regplot(data=df_analysis,
+                x="poverty_rate_children",
+                y="cep_school_rate")
+# correlation
+x = "poverty_rate_children"
+y = "cep_school_rate"
+r = df_analysis[[x, y]].dropna().corr().iloc[0, 1]
+plt.text(
+    0.02, 0.98,
+    f"r = {r:.3f}",
+    transform=plt.gca().transAxes,
+    ha="left", va="top",
+    fontsize=12
+)
+plt.title("Child Poverty vs CEP Participation")
+plt.savefig("../figures/scatterplots/child_pov_vs_cep_IL.png", dpi=300, bbox_inches="tight")
+
+plt.show()
+
+sns.regplot(data=df_analysis,
+                x="dem_margin",
+                y="cep_school_rate")
+# correlation
+x = "dem_margin"
+y = "cep_school_rate"
+r = df_analysis[[x, y]].dropna().corr().iloc[0, 1]
+plt.text(
+    0.02, 0.98,
+    f"r = {r:.3f}",
+    transform=plt.gca().transAxes,
+    ha="left", va="top",
+    fontsize=12
+)
+
+plt.title("Political Leaning vs CEP Participation")
+plt.savefig("../figures/scatterplots/dem_margin_vs_cep_IL.png", dpi=300, bbox_inches="tight")
+plt.show()
+
+```
+
+### MO map
+```{python}
+# =====================================================
+# 1. Load the datafile
+# =====================================================
+counties = gpd.read_file(url)
+## Missouri = STATEFP 29
+counties_mo = counties[counties["STATEFP"] == "29"].copy()
+counties_mo.head()
+# Load other data sets
+cep  = pd.read_csv(CEP_CSV,  dtype={"county_fips": str})
+pov  = pd.read_csv(POV_CSV,  dtype={"county_fips": str})
+vote = pd.read_csv(VOTE_CSV, dtype={"county_fips": str})
+
+for df in (cep, pov, vote):
+    df["county_fips"] = (
+        df["county_fips"]
+        .str.replace(r"\.0$", "", regex=True)  
+        .str.strip()                           
+        .str.zfill(5)                          
+    )
+
+gdf = counties.copy()
+
+# Construct 5-digit county FIPS from TIGER columns
+gdf["county_fips"] = (
+    gdf["STATEFP"].astype(str).str.zfill(2) +
+    gdf["COUNTYFP"].astype(str).str.zfill(3)
+)
+
+# Filter to Illinois only (STATEFP = 17)
+gdf_mo = gdf[gdf["STATEFP"].astype(str).str.zfill(2) == "29"].copy()
+
+# Reproject for better map appearance
+gdf_mo = gdf_mo.to_crs(epsg=5070)
+
+# =====================================================
+# 2. Merge county-level metrics
+# =====================================================
+df_mo = (
+    pov[["county_fips", "poverty_rate_children"]]
+      .merge(vote[["county_fips", "dem_margin"]], on="county_fips", how="left")
+      .merge(cep[["county_fips", "cep_school_rate"]], on="county_fips", how="left")
+)
+
+gdf_mo = gdf_mo.merge(df_mo, on="county_fips", how="left")
+
+# =====================================================
+# 3. Mapping function (save as PNG for slides)
+# =====================================================
+def display_map(gdf, column, title,
+                cmap="viridis",
+                vmin=None, vmax=None,
+                center_zero=False):
+
+    fig, ax = plt.subplots(figsize=(8.5, 6))
+    ax.set_axis_off()
+
+    # Symmetric scale for political margin
+    if center_zero:
+        values = gdf[column].dropna()
+        max_abs = float(np.nanmax(np.abs(values))) if len(values) else 1.0
+        vmin, vmax = -max_abs, max_abs
+        cmap = "RdBu"
+
+    gdf.plot(
+        column=column,
+        ax=ax,
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+        legend=True,
+        legend_kwds={"shrink": 0.75},
+        edgecolor="white",
+        linewidth=0.4
+    )
+
+    ax.set_title(title, fontsize=14
+    filename = title.replace(" ", "_").replace("(", "").replace(")", "")
+    plt.savefig(f"../figures/maps/{filename}.png", dpi=300, bbox_inches="tight"))
+    plt.tight_layout()
+    plt.show()
+
+# =====================================================
+# 5. Generate maps for presentation
+# =====================================================
+
+# Democratic margin (diverging scale centered at zero)
+display_map(
+    gdf_mo,
+    column="dem_margin",
+    title="Missouri Counties: Democratic Margin (2024)",
+    center_zero=True
+)
+
+# Child poverty rate
+display_map(
+    gdf_mo,
+    column="poverty_rate_children",
+    title="Missouri Counties: Child Poverty Rate"
+)
+
+# CEP participation rate
+display_map(
+    gdf_mo,
+    column="cep_school_rate",
+    title="Missouri Counties: CEP Participation Rate (Share of Schools)",
+    vmin=0,
+    vmax=1
+)
+```
+
+### MO map
+```{python}
+# Scatter plot
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Merge everything into one dataframe
+df_analysis = (
+    df_mo[["county_fips", "dem_margin",
+           "poverty_rate_children",
+           "cep_school_rate"]]
+)
+
+sns.regplot(data=df_analysis,
+                x="poverty_rate_children",
+                y="cep_school_rate")
+# correlation
+x = "poverty_rate_children"
+y = "cep_school_rate"
+r = df_analysis[[x, y]].dropna().corr().iloc[0, 1]
+plt.text(
+    0.02, 0.98,
+    f"r = {r:.3f}",
+    transform=plt.gca().transAxes,
+    ha="left", va="top",
+    fontsize=12
+)
+plt.title("Child Poverty vs CEP Participation")
+plt.savefig("../figures/scatterplots/dem_margin_vs_child_pov.png", dpi=300, bbox_inches="tight")
+plt.show()
+
+sns.regplot(data=df_analysis,
+                x="dem_margin",
+                y="cep_school_rate")
+# correlation
+y = "cep_school_rate"
+x = "dem_margin"
+r = df_analysis[[x, y]].dropna().corr().iloc[0, 1]
+plt.text(
+    0.02, 0.98,
+    f"r = {r:.3f}",
+    transform=plt.gca().transAxes,
+    ha="left", va="top",
+    fontsize=12
+)
+plt.title("Political Leaning vs CEP Participation")
+plt.savefig("../figures/scatterplots/dem_margin_vs_cep_IL.png", dpi=300, bbox_inches="tight")
+plt.show()
+
+
+```
+
+```{python}
+import pandas as pd
+
+df = pd.read_csv("../data/raw-data/file.csv")
+df.head()
+```

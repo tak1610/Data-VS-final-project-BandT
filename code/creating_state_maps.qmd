@@ -1,10 +1,10 @@
 ---
-title: "State Maps "
+title: "State Maps, scatter plots, and OLS"
 format: html
 ---
 
-# Creating maps
-## 1 mapping policies (cep rate and NSLP spending vs child well-being variables)
+# 1 Create maps 
+## mapping policies (cep rate and NSLP spending vs child well-being variables)
 
 ```{python}
 import pandas as pd
@@ -198,4 +198,482 @@ plot_pair_big(COL_DOL, COL_INSUF,
               "Purples", "Reds")
 ```
 
-## 2 voting maps
+## voting maps
+```{python}
+import pandas as pd
+import numpy as np
+import geopandas as gpd
+import matplotlib.pyplot as plt
+from pathlib import Path
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
+from matplotlib.colors import TwoSlopeNorm
+# -----------------------
+# Paths
+# -----------------------
+MASTER_DIR = Path(r"C:\Users\gnolu\final project data vz\date cleaning\cleaning")
+SHP_DIR    = Path(r"C:\Users\gnolu\final project data vz\date cleaning\cleaning\shp file\state")
+
+MASTER_PATH = MASTER_DIR / "vote_state_2024_with_other_major_varis.csv"
+SHP_PATH    = SHP_DIR / "cb_2018_us_state_500k.shp"
+
+# -----------------------
+# Columns
+# -----------------------
+COL_CEP   = "cep_rate_school"
+COL_DOL   = "nslp_total_dollars_per_school_age"
+COL_POV   = "poverty_rate_children"
+COL_INSEC = "child_food_insec_rate"
+COL_INSUF = "food_insufficiency_weighted"
+COL_VOTE = "dem_margin"
+
+# -----------------------
+# Load + merge
+# -----------------------
+df = pd.read_csv(MASTER_PATH)
+df["state_po"] = df["state_po"].astype(str).str.strip()
+df["poverty_rate_children"] = df["poverty_rate_children"] / 100
+
+states = gpd.read_file(SHP_PATH)
+# Keep state abbreviation directly from shapefile
+states = states[["STUSPS", "NAME", "geometry"]]
+states = states.rename(columns={"STUSPS": "state_po"})
+
+gdf = states.merge(df, on="state_po", how="left")
+
+# -----------------------
+# IMPORTANT: CONUS only => big maps
+# -----------------------
+gdf_conus = gdf[~gdf["state_po"].isin(["AK", "HI"])].copy()
+
+# Explicit list: 48 contiguous states + DC
+conus_keep = [
+    "AL","AZ","AR","CA","CO","CT","DE","DC","FL","GA","ID","IL","IN","IA","KS","KY",
+    "LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC",
+    "ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"
+]
+gdf_conus = gdf[gdf["state_po"].isin(conus_keep)].copy()
+
+# Label source: prefer STUSPS if exists, else state_name
+label_col = "state_po" 
+
+# ------------------------------------------------------------
+# Plot a diverging choropleth for dem_margin (blue=Dem, red=GOP)
+# Requirements:
+# - gdf_conus: GeoDataFrame with geometry and a numeric "dem_margin" column
+# - add_state_labels(ax, gdf_conus): your helper to add state labels
+# - label_col: your label column name ("STUSPS" or "state_name")
+# ------------------------------------------------------------
+def add_state_labels(ax, g):
+    # representative_point is safer than centroid (keeps point inside polygon)
+    pts = g.geometry.representative_point()
+    for x, y, lab in zip(pts.x, pts.y, g[label_col].astype(str)):
+        ax.text(x, y, lab, fontsize=11, ha="center", va="center")
+
+def plot_dem_margin_big(
+    gdf_conus,
+    dem_col="dem_margin",
+    title="County/State-level Democratic margin (blue=Dem, red=GOP)",
+    label_states=True
+):
+    # Make a copy to avoid mutating upstream objects
+    g = gdf_conus.copy()
+
+    # Ensure numeric (safe even if already numeric)
+    g[dem_col] = pd.to_numeric(g[dem_col], errors="coerce")
+
+    # Use symmetric bounds around zero so colors are comparable
+    v = np.nanmax(np.abs(g[dem_col].values))
+    vmin, vmax = -v, v
+
+    # Center the color scale at 0
+    norm = TwoSlopeNorm(vmin=vmin, vcenter=0.0, vmax=vmax)
+
+    # Choose a diverging colormap where positive values are BLUE
+    # - "RdBu_r" => positive (high) is blue, negative (low) is red
+    cmap = plt.get_cmap("RdBu")
+
+    fig, ax = plt.subplots(1, 1, figsize=(22, 10), constrained_layout=True)
+
+    # Plot polygons
+    g.plot(
+        column=dem_col,
+        ax=ax,
+        cmap=cmap,
+        norm=norm,
+        edgecolor="white",
+        linewidth=0.5,
+        missing_kwds={"color": "lightgrey"}
+    )
+
+    ax.set_title(title, fontsize=18)
+    ax.set_axis_off()
+
+   
+    add_state_labels(ax, g)
+
+    # Add colorbar
+    sm = ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+
+    cbar = fig.colorbar(sm, ax=ax, fraction=0.035, pad=0.01)
+    cbar.set_label("Democratic margin (Dem share − GOP share)", fontsize=18)
+
+    # Optional: nicer ticks (you can tweak)
+    cbar.ax.tick_params(labelsize=16)
+
+    plt.show()
+
+def plot_dem_vs_cep_pair(
+    gdf_conus,
+    dem_col="dem_margin",
+    cep_col="cep_rate_school",
+    title="Democratic margin vs CEP participation rate (CONUS)",
+    label_col="state_po",
+    label_states=True,
+    label_fontsize=11
+):
+    g = gdf_conus.copy()
+
+    # Ensure numeric columns
+    g[dem_col] = pd.to_numeric(g[dem_col], errors="coerce")
+    g[cep_col] = pd.to_numeric(g[cep_col], errors="coerce")
+
+    # --- Left map: Dem margin (diverging around 0)
+    v = np.nanmax(np.abs(g[dem_col].values))
+    dem_norm = TwoSlopeNorm(vmin=-v, vcenter=0.0, vmax=v)
+    dem_cmap = plt.get_cmap("RdBu")  # positive -> blue, negative -> red
+
+    # --- Right map: CEP rate (sequential)
+    # If cep rate is 0-1, this works well. If it is 0-100, you may want to /100 first.
+    cep_norm = Normalize(vmin=np.nanmin(g[cep_col]), vmax=np.nanmax(g[cep_col]))
+    cep_cmap = plt.get_cmap("Blues")
+
+    # Create the two-panel figure
+    fig, axes = plt.subplots(1, 2, figsize=(24, 10), constrained_layout=True)
+
+    # ---- LEFT: Dem margin
+    g.plot(
+        column=dem_col,
+        ax=axes[0],
+        cmap=dem_cmap,
+        norm=dem_norm,
+        edgecolor="white",
+        linewidth=0.5,
+        missing_kwds={"color": "lightgrey"}
+    )
+    axes[0].set_title("Democratic margin (Blue=Dem, Red=Rep)", fontsize=16)
+    axes[0].set_axis_off()
+    add_state_labels(axes[0], g)
+
+    # ---- RIGHT: CEP rate
+    g.plot(
+        column=cep_col,
+        ax=axes[1],
+        cmap=cep_cmap,
+        norm=cep_norm,
+        edgecolor="white",
+        linewidth=0.5,
+        missing_kwds={"color": "lightgrey"}
+    )
+    axes[1].set_title("CEP participation rate", fontsize=16)
+    axes[1].set_axis_off()
+
+    # Tight zoom to CONUS bounds (removes excess whitespace)
+    xmin, ymin, xmax, ymax = g.total_bounds
+    for ax in axes:
+        ax.set_xlim(xmin, xmax)
+        ax.set_ylim(ymin, ymax)
+
+    add_state_labels(axes[1], g)
+
+    # Colorbars (one for each map)
+    sm_dem = ScalarMappable(norm=dem_norm, cmap=dem_cmap)
+    sm_dem.set_array([])
+    cbar_dem = fig.colorbar(sm_dem, ax=axes[0], fraction=0.04, pad=0.01)
+    cbar_dem.set_label("Dem margin (Dem share − Rep share)", fontsize=14)
+    cbar_dem.ax.tick_params(labelsize=12)
+
+    sm_cep = ScalarMappable(norm=cep_norm, cmap=cep_cmap)
+    sm_cep.set_array([])
+    cbar_cep = fig.colorbar(sm_cep, ax=axes[1], fraction=0.04, pad=0.01)
+    cbar_cep.set_label("CEP rate", fontsize=14)
+    cbar_cep.ax.tick_params(labelsize=12)
+    fig.suptitle(title, fontsize=18)
+
+    # create file names
+    filename = title.replace(" ", "_").replace("(", "").replace(")", "") + ".png"
+
+    # save the output
+    path = os.path.join(OUTPUT_DIR, filename)
+    plt.savefig(path, dpi=300, bbox_inches="tight")
+
+    plt.show()
+
+# ------------------------------------------------------------
+# Call the function
+# ------------------------------------------------------------
+plot_dem_vs_cep_pair(
+    gdf_conus,
+    dem_col="dem_margin",
+    cep_col="cep_rate_school",
+    title="Political leaning vs CEP participation (CONUS)",
+    label_col="state_po",
+    label_states=True,
+    label_fontsize=11
+)
+```
+
+# Create scatter plots
+## cep rate and NSLP spending vs child well-being variables
+```{python}
+# Scatter plot and fitted line
+from re import X
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+df = pd.read_csv(r"..\data\derived-data\master_state_with_controls.csv")
+df["poverty_rate_children"] = df["poverty_rate_children"] / 100
+
+# use sns
+def scatter_with_fit_sns(
+    df, x, y, state_col="state_name",
+    title=None, xlabel=None, ylabel=None,
+    annotate=False, figsize=(7.2, 5.0),
+    ci=95, point_alpha=0.7
+):
+    # drop missing
+    d = df[[x, y, state_col]].dropna(subset=[x, y]).copy()
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # scatter + fitted line (OLS)
+    sns.regplot(
+        data=d, x=x, y=y,
+        ax=ax,
+        ci=ci,                  # confidence interval band (set None to remove)
+        scatter_kws={"alpha": point_alpha},
+        line_kws={}
+    )
+    # --- correlation ---
+    r = d[[x, y]].corr().iloc[0, 1]
+
+    ax.text(
+        0.02, 0.98,
+        f"r = {r:.3f}",
+        transform=ax.transAxes,
+        ha="left", va="top",
+        fontsize=12
+    )
+
+    ax.set_title(title if title else f"{y} vs {x}")
+    ax.set_xlabel(xlabel if xlabel else x.replace("_", " ").title())
+    ax.set_ylabel(ylabel if ylabel else y.replace("_", " ").title())
+
+    # create file names
+    filename = title.replace(" ", "_").replace("(", "").replace(")", "") + ".png"
+
+    # save the output
+    path = os.path.join("../figures/scatterplots/", filename)
+    plt.savefig(path, dpi=300, bbox_inches="tight")
+
+
+    fig.tight_layout()
+    return fig, ax
+
+# ---- 4 key plots (Need on X, Policy on Y) ----
+c1 = scatter_with_fit_sns(
+    df,
+    x="cep_rate_school",
+    y="poverty_rate_children",
+    title="Child poverty vs School CEP rate"
+)
+
+c2 = scatter_with_fit_sns(
+    df,
+    x="cep_rate_school",
+    y="child_food_insec_rate",
+    title="Food insecurity vs School CEP rate"
+)
+
+c3 = scatter_with_fit_sns(
+    df,
+    x="nslp_total_dollars_per_school_age",
+    y="poverty_rate_children",
+    title="Child poverty vs NSLP dollars per school-age child"
+)
+
+c4 = scatter_with_fit_sns(
+    df,
+    x="nslp_total_dollars_per_school_age",
+    y="child_food_insec_rate",
+    title="Food insecurity vs NSLP dollars per school-age child"
+)
+
+c5 = scatter_with_fit_sns(
+    df,
+    x="nslp_total_dollars_per_school_age",
+    y="food_insufficiency_weighted",
+    title="Food insufficiency vs NSLP dollars per school-age child"
+)
+
+c6 = scatter_with_fit_sns(
+    df,
+    x="cep_rate_school",
+    y="food_insufficiency_weighted",
+    title="Food insufficiency vs School CEP rate"
+)
+c1
+c2
+c3
+c4
+c5
+c6
+
+```
+
+## voting
+```{python}
+import pandas as pd
+# Show the correlationships
+correlation_matrix = gdf_conus[
+    ["dem_margin", "cep_rate_school", "poverty_rate_children"]
+].corr()
+
+print(correlation_matrix)
+
+# show the scatter plot
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+sns.regplot(
+    data=gdf_conus,
+    x="dem_margin",
+    y="cep_rate_school",
+    scatter_kws={"alpha":0.3},
+    line_kws={"color":"red"}
+)
+# correlation
+x = "dem_margin"
+y = "cep_rate_school"
+r = gdf_conus[[x, y]].dropna().corr().iloc[0, 1]
+plt.text(
+    0.02, 0.98,
+    f"r = {r:.3f}",
+    transform=plt.gca().transAxes,
+    ha="left", va="top",
+    fontsize=12
+)
+plt.ylim(0, 1.19)
+plt.title("Political Leaning vs CEP Participation (CONUS)")
+plt.xlabel("Democratic Margin")
+plt.ylabel("CEP School Participation Rate")
+
+plt.savefig("../figures/scatterplots/dem_margin_vs_cep.png", dpi=300, bbox_inches="tight")
+
+plt.show()
+
+sns.regplot(
+    data=gdf_conus,
+    x="dem_margin",
+    y="poverty_rate_children",
+    scatter_kws={"alpha":0.3},
+    line_kws={"color":"red"}
+)
+# correlation
+x = "dem_margin"
+y = "poverty_rate_children"
+r = gdf_conus[[x, y]].dropna().corr().iloc[0, 1]
+plt.text(
+    0.02, 0.98,
+    f"r = {r:.3f}",
+    transform=plt.gca().transAxes,
+    ha="left", va="top",
+    fontsize=12
+)
+
+plt.title("Political Leaning vs Child Poverty Rate (CONUS)")
+plt.xlabel("Democratic Margin")
+plt.ylabel("Child Poverty Rate")
+plt.savefig("../figures/scatterplots/dem_margin_vs_child_pov.png", dpi=300, bbox_inches="tight")
+
+plt.show()
+```
+
+# Create regression (regressing CEP on child pov and dem margin) 
+```{python}
+# ------------------------------------
+# Residual analysis
+# ------------------------------------
+import statsmodels.api as sm
+import matplotlib.patheffects as pe
+# ------------------------------------------------------------
+# 1) Compute poverty-controlled CEP = residuals from:
+#    CEP ~ poverty
+# ------------------------------------------------------------
+g = gdf_conus.copy()
+
+# Ensure numeric
+g["cep_rate_school"] = pd.to_numeric(g["cep_rate_school"], errors="coerce")
+g["poverty_rate_children"] = pd.to_numeric(g["poverty_rate_children"], errors="coerce")
+
+# Drop missing rows for regression
+reg_df = g[["cep_rate_school", "poverty_rate_children"]].dropna().copy()
+
+# OLS: CEP ~ poverty
+X = sm.add_constant(reg_df["poverty_rate_children"])
+y = reg_df["cep_rate_school"]
+model = sm.OLS(y, X).fit()
+
+# Put residuals back into g (aligned by index)
+g["cep_resid"] = np.nan
+g.loc[reg_df.index, "cep_resid"] = model.resid
+
+print(model.summary())  # Optional: check coefficient + R^2
+
+# -----
+# multivariate regression (holding the other variable constant)
+# -----
+import statsmodels.api as sm_ols
+# Drop missing rows
+reg_df = g[["cep_rate_school", "poverty_rate_children", "dem_margin"]].dropna().copy()
+
+# Define X and y
+X = reg_df[["poverty_rate_children", "dem_margin"]]
+X = sm_ols.add_constant(X)
+y = reg_df["cep_rate_school"]
+
+# Run OLS
+model2 = sm_ols.OLS(y, X).fit()
+
+print(model2.summary())
+
+res = model2  
+
+coef_tbl = pd.DataFrame({
+    "coef": res.params,
+    "std_err": res.bse,
+    "t": res.tvalues,
+    "p_value": res.pvalues,
+    "ci_low": res.conf_int()[0],
+    "ci_high": res.conf_int()[1],
+})
+
+# Summarize the result
+coef_tbl = coef_tbl.round({"coef": 3, "std_err": 3, "t": 3, "p_value": 3, "ci_low": 3, "ci_high": 3})
+```
+
+```{python}
+import pandas as pd
+
+df = pd.read_csv("../data/raw-data/file.csv")
+df.head()
+```
+
+```{python}
+import pandas as pd
+
+df = pd.read_csv("../data/raw-data/file.csv")
+df.head()
+```
