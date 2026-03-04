@@ -9,7 +9,7 @@ format: html
 import pandas as pd
 import numpy as np
 
-cep = pd.read_excel(r"data\raw-data\cep_2024.xlsx")
+cep = pd.read_excel(r"..\data\raw-data\cep_2024.xlsx")
 # -- Keep cols of interest --
 cep_clean = cep.drop(columns=["ISP Category"])
 # -- rename --
@@ -118,7 +118,7 @@ idx = cols.index("state_abbrev")
 # Insert state_fips right after state_abbrev
 cols.insert(idx + 1, "state_fips")
 # Store the data 
-cep_school.to_csv("data/derived-data/cep_school.csv", index=False)
+cep_school.to_csv("../data/derived-data/cep_school.csv", index=False)
 # Reorder dataframe
 cep_state_clean = cep_state_clean[cols]
 
@@ -126,7 +126,7 @@ cep_state_clean = cep_state_clean[cols]
 
 ## Child poverty rate data
 ```{python}
-child_pov = pd.read_csv(r"data\raw-data\child_poverty_rate_2024.csv", skiprows=[1])
+child_pov = pd.read_csv(r"..\data\raw-data\child_poverty_rate_2024.csv", skiprows=[1])
 # -- Keep cols of interest --
 keep_cols = [
     "GEO_ID",
@@ -183,7 +183,7 @@ child_pov_county["county_fips"] = child_pov_county["fips"].str[2:]
 child_pov_county["state_fips"] = child_pov_county["state_fips"].astype(str).str.zfill(2)
 child_pov_county["county_fips"] = child_pov_county["county_fips"].astype(str).str.zfill(3)
 # Store the data
-child_pov_county.to_csv("data\derived-data\child_pov_county.csv", index=False)
+child_pov_county.to_csv("..\data\derived-data\child_pov_county.csv", index=False)
 #child_pov_state.to_csv("child_pov_state.csv", index=False)
 ```
 
@@ -191,7 +191,7 @@ child_pov_county.to_csv("data\derived-data\child_pov_county.csv", index=False)
 ```{python}
 import pandas as pd
 
-food_insec = pd.read_csv(r"data\raw-data\food_insecurity_2024.csv")
+food_insec = pd.read_csv(r"..\data\raw-data\food_insecurity_2024.csv")
 # -- Keep cols of interest --
 # HRFS12MC is related to the suevy question about food insecurity with a household with children
 # PWSSWGT is weight (final person level weight) for state level aggregation
@@ -327,8 +327,8 @@ merged_state_all = merged_state_all[cols]
 ```{python}
 import pandas as pd
 from pathlib import Path
-DERIVED_DIR = Path(r"data\derived-data")
-DATA_DIR   = Path(r"data\raw-data")
+DERIVED_DIR = Path(r"..\data\derived-data")
+DATA_DIR   = Path(r"..\data\raw-data")
 master = merged_state_all.copy()
 cycle_files = [
     "Food Sufficiency for Households with Children_cycle01.xlsx",
@@ -563,7 +563,7 @@ import pandas as pd
 # ------------------
 # Clean the data set
 # ------------------
-df = pd.read_csv(r"data\raw-data\voting_2000-2024.csv")
+df = pd.read_csv(r"..\data\raw-data\voting_2000-2024.csv")
 # 1 Filter 2024
 df_2024 = df[df["year"] == 2024]
 # 2 Keep only DEM and REP
@@ -601,7 +601,7 @@ vote_state_2024["dem_margin"] = (
     vote_state_2024["DEMOCRAT"] - vote_state_2024["REPUBLICAN"]
 ) / vote_state_2024["total_votes"]  
 
-vote_county_2024.to_csv(r"data\raw-data\vote_county_2024.csv", index=False)
+vote_county_2024.to_csv(r"..\data\raw-data\vote_county_2024.csv", index=False)
 #vote_state_2024.to_csv("vote_state_2024.csv", index=False)
 
 ## Child poverty and CEP rate
@@ -623,26 +623,6 @@ vote_state_2024_sorted = vote_state_2024.sort_values(
     ascending=True
 )
 
-vote_state_2024_sorted.to_csv(r"data\derived-data\vote_state_2024_with_others.csv", index=False)
+vote_state_2024_sorted.to_csv(r"..\data\derived-data\vote_state_2024_with_others.csv", index=False)
 ```
 
-```{python}
-import pandas as pd
-
-df = pd.read_csv("data/raw-data/fire.csv")
-df.head()
-```
-
-```{python}
-import pandas as pd
-
-df = pd.read_csv("data/raw-data/fire.csv")
-df.head()
-```
-
-```{python}
-import pandas as pd
-
-df = pd.read_csv("data/raw-data/fire.csv")
-df.head()
-```

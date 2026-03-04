@@ -11,7 +11,7 @@ import statsmodels.api as sm
 # ============================================================
 # Load the data
 # ============================================================
-master = pd.read_csv(r"data\derieved-data\master_state_merged.csv")
+master = pd.read_csv(r"..\data\derived-data\master_state_with_controls.csv")
 
 
 # ============================================================

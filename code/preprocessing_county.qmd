@@ -7,7 +7,7 @@ format: html
 ## child povery and voting
 ```{python}
 import pandas as pd
-child_pov_county = pd.read_csv(r"data\derived-data\child_pov_county.csv")
+child_pov_county = pd.read_csv(r"..\data\derived-data\child_pov_county.csv")
 child_pov_il = child_pov_county[child_pov_county["state_fips"] == 17].copy()
 child_pov_il = child_pov_il.rename(columns={
     "fips": "county_fips",
@@ -22,7 +22,7 @@ child_pov_il["county_fips"] = (
 child_pov_il["county_fips"]
 len(child_pov_il)
 
-vote_county_2024 = pd.read_csv(r"data\derived-data\vote_county_2024.csv")
+vote_county_2024 = pd.read_csv(r"..\data\derived-data\vote_county_2024.csv")
 vote_county_2024["county_fips"] = vote_county_2024["county_fips"].astype(str).str.zfill(5)
 vote_county_2024["county_fips"] = (
     vote_county_2024["county_fips"].astype(str)
@@ -33,8 +33,8 @@ vote_county_2024["county_fips"] = (
 vote_2024_il = vote_county_2024[vote_county_2024["county_fips"].str.startswith("17")].copy()
 len(vote_2024_il)
 
-vote_2024_il.to_csv(r"data\derived-data\vote_2024_il.csv", index=False)
-child_pov_il.to_csv(r"data\derived-data\child_pov_il.csv", index=False)
+vote_2024_il.to_csv(r"..\data\derived-data\vote_2024_il.csv", index=False)
+child_pov_il.to_csv(r"..\data\derived-data\child_pov_il.csv", index=False)
 ```
 
 ## CEP school → county level
@@ -44,7 +44,7 @@ import pandas as pd
 # -------------------------
 # Load files
 # -------------------------
-cep_school = pd.read_csv(r"data\derived-data\cep_school.csv")
+cep_school = pd.read_csv(r"..\data\derived-data\cep_school.csv")
 
 #-----------------------------------
 # IL school data with county codes
@@ -97,7 +97,7 @@ cep_county_IL = (
     }))
     .reset_index()
 )
-cep_county_IL.to_csv(r"data\derived-data\cep_county_IL.csv", index=False)
+cep_county_IL.to_csv(r"..\data\derived-data\cep_county_IL.csv", index=False)
 cep_county_IL["county_fips"]
 ```
 
@@ -129,8 +129,8 @@ vote_county_2024["county_fips"] = (
 vote_2024_mo = vote_county_2024[vote_county_2024["county_fips"].str.startswith("29")].copy()
 len(vote_2024_mo)
 
-vote_2024_mo.to_csv(r"data\derived-data\vote_2024_mo.csv", index=False)
-child_pov_mo.to_csv(r"data\derived-data\child_pov_mo.csv", index=False)
+vote_2024_mo.to_csv(r"..\data\derived-data\vote_2024_mo.csv", index=False)
+child_pov_mo.to_csv(r"..\data\derived-data\child_pov_mo.csv", index=False)
 ```
 
 ## CEP school → county level
@@ -155,8 +155,8 @@ cep_school_MO.isna().sum()
 # Crosswalk (school id → county fips)
 # -----------------------------------
 # laod necessary data sets
-ccd_sch = pd.read_csv(r"data\raw-data\crosswalk\ccd_sch.csv")
-ncessch = pd.read_excel(r"data\raw-data\crosswalk\EDGE_GEOCODE.xlsx")
+ccd_sch = pd.read_csv(r"..\data\raw-data\crosswalk\ccd_sch.csv")
+ncessch = pd.read_excel(r"..\data\raw-data\crosswalk\EDGE_GEOCODE.xlsx")
 # Subset to MO data
 ccd_sch_mo = ccd_sch[ccd_sch["FIPST"] == 29]
 ncessch_mo = ncessch[ncessch["OPSTFIPS"] == 29]
@@ -266,21 +266,7 @@ print("Min/Max CEP school rate:",
       cep_county_MO["cep_school_rate"].min(),
       cep_county_MO["cep_school_rate"].max())
 
-cep_county_MO.to_csv(r"data\derived-data\cep_county_MO.csv", index=False)
+cep_county_MO.to_csv(r"..\data\derived-data\cep_county_MO.csv", index=False)
 ```
 
 
-```{python}
-import pandas as pd
-
-df = pd.read_csv("data/raw-data/fire.csv")
-df.head()
-```
-
-
-```{python}
-import pandas as pd
-
-df = pd.read_csv("data/raw-data/fire.csv")
-df.head()
-```
