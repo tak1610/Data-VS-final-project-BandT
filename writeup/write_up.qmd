@@ -1,0 +1,254 @@
+---
+title: "Spatial Patterns in Child Food Hardship and School Nutrition Policy"
+author: "Byeol Choi, Takuma Kazama"
+
+format:
+  html:
+    toc: false
+    number-sections: false
+  pdf:
+    toc: false
+    number-sections: false
+
+fontsize: 10pt
+geometry: margin=1in
+---
+
+```{python}
+#| echo: false
+#| eval: false
+
+# Setting
+
+from pathlib import Path
+import pandas as pd
+
+MASTER_DIR = Path(r"..\data\derived-data")
+DATA_DIR   = Path(r"..\data\raw-data")
+
+MASTER_PATH = MASTER_DIR / "master_state_merged.csv"
+master_df = pd.read_csv(MASTER_PATH)
+```
+
+# 1. Motivation
+
+Child food hardship remains unevenly distributed across U.S. states.  
+Federal school nutrition programs — especially the Community Eligibility Provision (CEP) and the National School Lunch Program (NSLP) — aim to reduce this burden by expanding meal access.
+
+This project asks three connected questions:
+
+- Do higher CEP participation rates correspond to lower food hardship?
+- Does higher NSLP spending per school-age child relate to improved outcomes?
+- Are hardship patterns geographically clustered?
+
+Rather than focusing only on regression estimates, this project emphasizes **visual and spatial evidence**, combining mapping, OLS, and spatial autocorrelation analysis.
+
+---
+
+# 2. Data and Construction
+
+We merge multiple state-level sources:
+
+- Household Pulse Survey (Food Sufficiency)
+- USDA NSLP expenditure data
+- CEP participation data
+- ACS socioeconomic controls
+- 2018 TIGER/Line state shapefile
+
+The final dataset contains 51 observations (50 states + DC).
+
+## Constructing Food Insufficiency
+
+Food insufficiency is defined as households reporting “sometimes” or “often” not having enough to eat in the past 7 days, weighted by total respondents.
+
+Below is the construction logic:
+
+```{python}
+#| echo: false
+#| eval: false
+
+# reference: weighted food insufficiency construction
+
+# (sample) definition shown in the write-up
+# df["food_insufficiency_weighted"] = (
+#     df["sometimes_not_enough"] + df["often_not_enough"]
+# ) / df["total_households"]
+
+df = master_df.copy()
+df[["state_name", "food_insufficiency_weighted"]].head()
+```
+
+This aggregation allows us to compare hardship consistently across states.
+
+---
+
+# 3. Visualizing Geographic Variation
+
+Mapping provides the first layer of insight.  
+We merge our constructed dataset with the U.S. state shapefile and generate choropleth maps.
+
+```{python}
+#| echo: false
+#| eval: false
+
+# reference: merge with shapefile and plot
+import geopandas as gpd
+import matplotlib.pyplot as plt
+
+SHP_DIR = DATA_DIR / "shp_file" / "state"
+STATE_SHP = SHP_DIR / "cb_2018_us_state_500k.shp"  
+
+gdf = gpd.read_file(STATE_SHP)
+gdf["state_name"] = gdf["NAME"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
+
+gdf = gdf.merge(master_df, on="state_name", how="left")
+gdf = gdf[~gdf["STUSPS"].isin(["AK", "HI"])].copy()
+
+fig, ax = plt.subplots(figsize=(10, 6))
+gdf.plot(column="food_insufficiency_weighted", legend=True, ax=ax, edgecolor="white", linewidth=0.4)
+ax.set_title("Food Insufficiency (Weighted), CONUS")
+ax.axis("off")
+plt.show()
+```
+
+### Visual Pattern
+
+- Southern states show consistently higher hardship.
+- Northeast and Upper Midwest tend to display lower rates.
+- Policy intensity does not visually mirror hardship geography.
+
+These spatial differences motivate formal statistical testing.
+
+---
+
+# 4. Regression Analysis
+
+To evaluate the relationship between policy variables and hardship, we estimate OLS models controlling for socioeconomic characteristics.
+
+The specification includes:
+
+- `cep_rate_school`
+- `nslp_total_dollars_per_school_age`
+- Median household income
+- Unemployment rate
+- SNAP participation
+- Family structure
+- Racial/ethnic composition
+
+Example specification:
+
+```{python}
+#| echo: false
+#| eval: false
+
+# reference: OLS model
+import statsmodels.api as sm
+import pandas as pd
+
+cols = [
+    "food_insufficiency_weighted",
+    "cep_rate_school",
+    "nslp_total_dollars_per_school_age",
+    "median_hh_income_k",
+    "unemployment_rate",
+    "snap_household_pct",
+    "single_parent_pct",
+    "pct_black",
+    "pct_hispanic",
+]
+
+d = master_df[[c for c in cols if c in master_df.columns]].copy()
+for c in d.columns:
+    d[c] = pd.to_numeric(d[c], errors="coerce")
+d = d.dropna()
+
+y = d["food_insufficiency_weighted"]
+X = sm.add_constant(d.drop(columns=["food_insufficiency_weighted"]))
+
+model = sm.OLS(y, X).fit(cov_type="HC1")
+pd.DataFrame({"coef": model.params, "p": model.pvalues}).reset_index().rename(columns={"index": "term"}).head(10)
+```
+
+### Core Findings
+
+- CEP participation: not statistically significant
+- NSLP spending: not statistically significant
+- Median income: strong negative association
+- Unemployment: positive and significant
+- Racial composition variables: correlated with hardship
+- R² ≈ 0.71 (food insufficiency model)
+
+### Interpretation
+
+At the state level, structural economic conditions explain more variation than program intensity measures.
+
+However, regression alone cannot capture spatial dependence.
+
+---
+
+# 5. Spatial Autocorrelation (Moran’s I)
+
+To assess whether hardship clusters geographically, we compute Local Moran’s I (LISA).
+
+```{python}
+#| echo: false
+#| eval: false
+
+# reference: Moran's I computation
+
+from libpysal.weights import Queen
+from esda.moran import Moran_Local
+
+gg = gdf.dropna(subset=["food_insufficiency_weighted"]).copy()
+
+w = Queen.from_dataframe(gg, use_index=False)
+w.transform = "r"
+
+y = gg["food_insufficiency_weighted"].values
+moran_loc = Moran_Local(y, w, permutations=999)
+
+gg["cluster"] = moran_loc.q
+gg["significant"] = moran_loc.p_sim < 0.05
+
+gg[["state_name", "cluster", "significant"]].head(10)
+```
+
+Cluster categories:
+
+- High–High: high hardship surrounded by high hardship
+- Low–Low: low hardship surrounded by low hardship
+- High–Low / Low–High: spatial outliers
+
+### Spatial Findings
+
+- Significant High–High clusters appear in parts of the South.
+- Low–Low clusters emerge in the Northeast.
+- Food hardship is spatially concentrated rather than randomly distributed.
+
+This suggests regional dynamics beyond simple cross-state averages.
+
+---
+
+# 6. Discussion
+
+### What We Learn
+
+- State-level policy intensity (CEP, NSLP dollars) does not independently predict hardship once controls are included.
+- Economic fundamentals dominate.
+- Spatial clustering reveals regional concentration.
+- Visual mapping adds interpretive depth beyond regression tables.
+
+### Limitations
+
+- State-level aggregation masks within-state disparities.
+- Cross-sectional design prevents causal claims.
+- Policy variables may operate more strongly at district level.
+- Potential multicollinearity among demographic controls.
+
+---
+
+# 7. Conclusion
+
+Child food hardship at the state level appears more strongly associated with structural socioeconomic conditions than with CEP participation or NSLP spending intensity. Yet, the presence of significant spatial clustering indicates that hardship is regionally concentrated, reinforcing the importance of geographically targeted policy approaches and spatially informed analysis.
+
+---
