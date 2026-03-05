@@ -365,7 +365,7 @@ This is discussed in the appendix
 
 # 5. Streamlit
 For dynamic visualization, we created the streamlit app where we can plot the various variables we discussed here. In addtion to what is dicussed in the plot, we added addtional plots (MO's data we discussed in the presentation and so on).  
-Noth that for county maps in the app, using altair kept showing errors, we decided to use matplotlib instead. The link is here: https://child-food-hardship-dashboard.streamlit.app/   
+Noth that for county maps in the app, using altair kept showing errors, we decided to use matplotlib instead. The link is here: https://data-vs-final-project-byeolchoi-takuma.streamlit.app/
 
 ```{python}
 #| echo: false
