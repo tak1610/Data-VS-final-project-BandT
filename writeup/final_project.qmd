@@ -1,0 +1,404 @@
+---
+title: "Spatial Patterns in Child Food Hardship and School Nutrition Policy"
+author: 
+ - "Byeol Choi(byeolchoi98) from section 1"
+ - "Takuma Kazama(tak1610)  from section 1"
+
+format:
+  html:
+    toc: false
+    number-sections: false
+  pdf:
+    toc: false
+    number-sections: false
+
+fontsize: 10pt
+geometry: margin=0.6in
+---
+# 1. Motivation
+
+Child food hardship remains unevenly distributed across U.S. states.  
+Federal school nutrition programs — especially the Community Eligibility Provision (CEP) and the National School Lunch Program (NSLP) — aim to reduce this burden by expanding meal access.
+
+This project asks three connected questions:
+
+- Do higher CEP participation rates correspond to lower food hardship?
+- Does higher NSLP spending per school-age child relate to improved outcomes?  
+
+Rather than focusing only on regression estimates, this project emphasizes **visual and spatial evidence**.
+
+# 2. Data and Construction
+## State level visualization  
+For state-level visulaization, we mainly focus on child food insufficiency data (Househould Pulse Survey), CEP participation data (Food and Research Action Center), and 2024 Presidential election voting data (MIT Election Lab). For data construction, we created a master data (master_state_marged.csv), which also has other child well-bieng variables (details are in README.qmd) as well as the main variables. For the voting data, which is at the county level, we aggregated it at the state level. 
+
+### Difficulties or spcial steps in the data cleaning process  
+- Constructing Food Insufficiency:  
+Food insufficiency is defined as households reporting “sometimes” or “often” not having enough to eat in the past 7 days, weighted by total respondents.
+```{python}
+#| echo: false
+#| eval: false
+
+# reference: weighted food insufficiency construction
+
+# (sample) definition shown in the write-up
+# df["food_insufficiency_weighted"] = (
+#     df["sometimes_not_enough"] + df["often_not_enough"]
+# ) / df["total_households"]
+
+df = master_df.copy()
+df[["state_name", "food_insufficiency_weighted"]].head()
+```
+
+- Democratic margin:  
+The voting data only has the number of votes that each party gets, so we converted it into a relative metric, which is called "democratic margin". 
+```{python}
+#| echo: false
+#| eval: false
+
+# reference: creating democratic margin
+# ------------------
+# Clean the data set
+# ------------------
+df = pd.read_csv(r"..\data\raw-data\voting_2000-2024.csv")
+# 1 Filter 2024
+df_2024 = df[df["year"] == 2024]
+# 2 Keep only DEM and REP
+df_2024 = df_2024[df_2024["party"].isin(["DEMOCRAT", "REPUBLICAN"])]
+# 3 Pivot to wide formant
+df_wide = (
+    df_2024
+    .pivot_table(
+        index=["state_po", "county_fips", "county_name"],
+        columns="party",
+        values="candidatevotes",
+        aggfunc="sum"
+    )
+    .reset_index()
+)
+# 4 Compute total votes
+df_wide["total_votes"] = (
+    df_wide["DEMOCRAT"] + df_wide["REPUBLICAN"]
+)
+# 5 Compute democratic margin
+df_wide["dem_margin"] = (
+    df_wide["DEMOCRAT"] - df_wide["REPUBLICAN"]
+) / df_wide["total_votes"]
+# 6 Fix Fips
+df_wide["county_fips"] = df_wide["county_fips"].astype(str).str.zfill(5)
+# 7 State and county level data
+vote_county_2024 = df_wide.copy()
+vote_state_2024 = (
+    df_wide
+    .groupby("state_po")[["DEMOCRAT", "REPUBLICAN", "total_votes"]]
+    .sum()
+    .reset_index()
+)
+vote_state_2024["dem_margin"] = (
+    vote_state_2024["DEMOCRAT"] - vote_state_2024["REPUBLICAN"]
+) / vote_state_2024["total_votes"]  
+
+vote_county_2024.to_csv(r"..\data\raw-data\vote_county_2024.csv", index=False)
+```
+
+## County level visualization
+For county-level visualization, we focus on the same variables of interest as the state-level visualization. However, food insecurity data is not available at the county level, so we used county-level child poverty rate (U.S. Census Bureau) as a proxy. For eahc data, we subset them to a county-level one.
+
+### Difficulties or spcial steps in the data cleaning process  
+
+- CEP participation rate:
+CEP participation rate data is the shcool-district level, so we used IL's ISBE code as a crosswalk, which connects school ID with county fips codes in IL.
+```{python}
+#| echo: false
+#| eval: false
+
+# Reference: school-level cep IL data → county-level cep IL data 
+
+# 1 Load files
+cep_school = pd.read_csv(r"..\data\derived-data\cep_school.csv")
+
+# 2 IL school data with county codes
+cep_school["isp"] = pd.to_numeric(cep_school["isp"], errors="coerce")
+cep_school[cep_school["state_abbrev"] == "IL"]["isp"].isna().sum()
+## Subset the data to Illinois data
+cep_school_IL = cep_school[cep_school["state_abbrev"] == "IL"]
+cep_school_IL["school_id"].nunique()
+## cep_school_IL.to_csv("cep_school_IL.csv", index=False)
+## Extract county ISBE code
+cep_school_IL["county_code_ISBE"] = cep_school_IL["lea_id"].str.split("-").str[1]
+## Remove county code "000" and "108" because they are not county institutions
+cep_school_IL = cep_school_IL[
+    ~cep_school_IL["county_code_ISBE"].isin(["000", "108"])
+]
+## Convert ISBE code into Fips code
+cep_school_IL["county_code_ISBE"] = cep_school_IL["county_code_ISBE"].astype(int)
+cep_school_IL["county_fips"] = (
+    "17" +
+    (2 * cep_school_IL["county_code_ISBE"] - 1)
+        .astype(str)
+        .str.zfill(3)
+)
+cep_school_IL["county_fips"].nunique() # This returns 102, equal to the number of counties in IL
+cep_school_IL_county = cep_school_IL.copy()
+
+# 3) Aggregate data at the county level
+## Aggregate data
+cep_county_IL = (
+    cep_school_IL_county
+    .groupby("county_fips")
+    .apply(lambda df: pd.Series({
+        "total_schools": df["school_id"].count(),
+        "total_students": df["enrollment"].sum(),
+        "cep_school_rate": (df["cep_participation"]=="Yes").mean(),
+        "cep_student_rate":
+            df.loc[df["cep_participation"]=="Yes","enrollment"].sum()
+            / df["enrollment"].sum(),
+        "weighted_isp":
+            (df["isp"]*df["enrollment"]).sum()
+            / df["enrollment"].sum()
+    }))
+    .reset_index()
+)
+cep_county_IL.to_csv(r"..\data\derived-data\cep_county_IL.csv", index=False)
+```
+
+## OLS regression analysis (state-level)  
+For OLS regression, we add additional variables to the master data for more robust analysis (master_merged_with_controls.csv). Detailed information is descrived in README.qmd.
+
+# 3. Visualizing Geographic Variation
+## State level visualization  
+To address the question "Do higher CEP participation rates correspond to lower food hardship?", we plot child food insufficiency rate and cep participation rate data in a scatterplot. In addtion to this, we colored the points by democratic margin because our interest also lies in whether some other factor than child well-bieng variables may explain cep participation rate. To do so, we merged voting data and master data as well.
+```{python}
+#| echo: false
+#| eval: True
+import altair as alt
+import geopandas as gpd
+import json
+import pandas as pd
+alt.data_transformers.disable_max_rows()
+#------------------------------
+# state scatter plots
+#------------------------------
+# New plots after presentation
+df = pd.read_csv(r"..\data\derived-data\master_state_with_controls.csv")
+vote = pd.read_csv(r"..\data\derived-data\vote_state_2024_with_others.csv")
+df = df.rename(columns={"state_abbrev":"state_po"})
+df_plus_vote = pd.merge(df, vote, how="left", on="state_po")
+plot_1 = alt.Chart(df_plus_vote).mark_circle(size=80, opacity=0.8).encode(
+    x=alt.X("food_insufficiency_weighted:Q", title="Child Food Insufficiency", axis=alt.Axis(format="%")),
+    y=alt.Y("cep_rate_school_x:Q", title="CEP Participation Rate", axis=alt.Axis(format="%")),
+    color=alt.Color(
+        "dem_margin:Q",
+        title="Democratic Margin",
+        scale=alt.Scale(scheme="redblue", domain=[-1, 1], domainMid=0)
+    ),
+    tooltip=[
+        alt.Tooltip("state_po:N", title="State"),
+        alt.Tooltip("food_insufficiency_weighted:Q", title="Child Food Insufficiency", format=".2%"),
+        alt.Tooltip("cep_rate_school_x:Q", title="CEP rate", format=".2%"),
+        alt.Tooltip("dem_margin:Q", title="Dem margin", format=".2f"),
+    ],
+).properties(
+    title="CEP Participation vs Child food insufficiency (colored by Democratic margin)", width = 400, height= 300
+)
+plot_1.save("../figures/plot_1.png", scale_factor=2)
+
+```
+![](../figures/plot_1.png){width=50%}  
+
+
+### Visual Pattern
+
+- CEP participation rate is positively correlated with the child food insufficiency rate.
+- This means that the policy covers those in need to some extent.
+- However, it is also clear that democratic-leaning states (blue states) tend to have a higher CEP participation rate.
+
+These findings motivated us to a county-level analysis, taking IL as an example.
+In addtion, these spatial differences motivate formal statistical testing, which is whehter higher cep rates actually improves child-wellbeing (addressed in OLS part).
+
+## County level visualization  
+For the county-level analysis, we put the three data on the IL map, child poverty rate, cep participation rate, and democratic margin to see if there is any spatial pattern.  
+```{python}
+#| echo: false
+#| eval: True
+#| warning: false
+#| message: false
+import altair as alt
+import geopandas as gpd
+import json
+import pandas as pd
+alt.data_transformers.disable_max_rows()
+#---------------------------------------------------------
+# IL maps
+# --------------------------------------------------------
+# =====================================================
+# 1. File paths (adjust if needed)
+# =====================================================
+url = "https://www2.census.gov/geo/tiger/TIGER2023/COUNTY/tl_2023_us_county.zip"
+
+CEP_CSV  = r"C:\Users\gnolu\final project data vz\date cleaning\cleaning\CEP\IL\cep_county_IL.csv"
+POV_CSV  = r"C:\Users\gnolu\final project data vz\date cleaning\cleaning\child_pov_il.csv"
+VOTE_CSV = r"C:\Users\gnolu\final project data vz\date cleaning\cleaning\vote_2024_il.csv"
+
+# =====================================================
+# 2. Load datasets
+# =====================================================
+cep  = pd.read_csv(CEP_CSV)     # Must contain: county_fips, cep_school_rate
+pov  = pd.read_csv(POV_CSV)     # Must contain: county_fips, poverty_rate_children
+vote = pd.read_csv(VOTE_CSV)    # Must contain: county_fips, dem_margin
+
+# Ensure county_fips is a 5-digit string
+for df in (cep, pov, vote):
+    df["county_fips"] = df["county_fips"].astype(str).str.zfill(5)
+# Divide child pov rate by 100
+pov["poverty_rate_children"] = pov["poverty_rate_children"] / 100
+
+# =====================================================
+# 3. Load Illinois county shapefile
+# =====================================================
+gdf = gpd.read_file(url)
+
+# Construct 5-digit county FIPS from TIGER columns
+gdf["county_fips"] = (
+    gdf["STATEFP"].astype(str).str.zfill(2) +
+    gdf["COUNTYFP"].astype(str).str.zfill(3)
+)
+
+# Filter to Illinois only (STATEFP = 17)
+gdf_il = gdf[gdf["STATEFP"].astype(str).str.zfill(2) == "17"].copy()
+
+# Reproject for better map appearance
+gdf_il = gdf_il.to_crs(epsg=5070)
+
+# =====================================================
+# 4. Merge county-level metrics
+# =====================================================
+df_il = (
+    cep[["county_fips", "cep_school_rate"]]
+    .merge(pov[["county_fips", "poverty_rate_children"]],
+           on="county_fips", how="left")
+    .merge(vote[["county_fips", "dem_margin"]],
+           on="county_fips", how="left")
+)
+
+gdf_il = gdf_il.merge(df_il, on="county_fips", how="left")
+
+def gdf_to_altair_geo(gdf):
+    # 1) GeoJSON
+    if gdf.crs is None:
+        raise ValueError("gdf.crs is noen. We cannot do to_crs.")
+
+    gdf_ll = gdf.to_crs(epsg=4326)
+
+    # 2) Optional just in case geometory is broken
+    gdf_ll = gdf_ll.copy()
+    gdf_ll["geometry"] = gdf_ll["geometry"].buffer(0)
+
+    return alt.Data(
+        values=json.loads(gdf_ll.to_json()),
+        format=alt.DataFormat(property="features", type="json")
+    )
+
+def county_map_three_panels(gdf_il):
+    geo = gdf_to_altair_geo(gdf_il)
+
+    base = alt.Chart(geo).mark_geoshape(stroke="white", strokeWidth=0.4).properties(
+        width=280, height=320
+    )
+
+    # 1) CEP (blue)
+    m_cep = base.encode(
+        color=alt.Color(
+            "properties.cep_school_rate:Q",
+            title="CEP participation",
+            scale=alt.Scale(scheme="blues", domain=[0, 1]),
+            legend=alt.Legend(format=".0%")
+        )
+    ).properties(title="CEP")
+
+    # 2) Child poverty (red)
+    m_pov = base.encode(
+        color=alt.Color(
+            "properties.poverty_rate_children:Q",
+            title="Child poverty",
+            scale=alt.Scale(scheme="reds"),
+            legend=alt.Legend(format=".0%")
+        )
+    ).properties(title="Child poverty")
+
+    # 3) Democratic margin (diverging; blue=Dem, red=Rep)
+    m_dem = base.encode(
+    color=alt.Color(
+        "properties.dem_margin:Q",
+        title="Democratic margin",
+        scale=alt.Scale(
+            scheme="redblue",   # Rep=red, Dem=blue
+            domainMid=0
+        ),
+        legend=alt.Legend(format=".2f")
+    )
+    ).properties(title="Political leaning")
+
+    # place the three maps in a single row
+    chart = alt.hconcat(m_cep, m_pov, m_dem).resolve_scale(
+    color="independent"
+    ).properties(
+    title="Illinois counties: CEP, child poverty, and political leaning"
+    )
+    return chart
+
+# call the function
+plot_2 = county_map_three_panels(gdf_il)
+plot_2.save("../figures/plot_2.png", scale_factor=2)
+```
+![](../figures/plot_2.png){width=90%}
+
+### Visual Pattern
+
+- It appears that cep participation rate is slightly positively correlated with the child poverty rate.
+- This means that the policy covers those in need to some extent even at the county level.
+- However, from the visual insepction, it is difficult to capture the spatial pattern or correlation between cep rate and the other two variables.  
+Combined with the state-level visualization, it appears that the policy targeting is aligned with high-need regions. However, looking at the political effect, its correlation with the cep rate is pronounced, espetically at the state level.
+
+# 4. Regression Analysis
+This is discussed in the appendix
+
+
+# 5. Streamlit
+For dynamic visualization, we created the streamlit app where we can plot the various variables we discussed here. In addtion to what is dicussed in the plot, we added addtional plots (MO's data we discussed in the presentation and so on).  
+Noth that for county maps in the app, using altair kept showing errors, we decided to use matplotlib instead. The link is here: https://child-food-hardship-dashboard.streamlit.app/   
+
+```{python}
+#| echo: false
+#| eval: false
+
+# reference: Moran's I computation
+
+from libpysal.weights import Queen
+from esda.moran import Moran_Local
+
+gg = gdf.dropna(subset=["food_insufficiency_weighted"]).copy()
+
+w = Queen.from_dataframe(gg, use_index=False)
+w.transform = "r"
+
+y = gg["food_insufficiency_weighted"].values
+moran_loc = Moran_Local(y, w, permutations=999)
+
+gg["cluster"] = moran_loc.q
+gg["significant"] = moran_loc.p_sim < 0.05
+
+gg[["state_name", "cluster", "significant"]].head(10)
+```
+
+
+# 6. Discussion
+### What we learn
+- The policy (cep participation rate) covers those in need in some degrees
+- However, it may be associated with political affiliation at the state level  
+
+### Limitations
+- Only focus on IL data at the county level  
+
+# 7. Conclusion
+Overall, the school meal program covers high-need regions. However, political leanings are also associated with the policy advancement, especially at the state level. Thus, institutional drive at the state level may be a key to further promote the policies.  
+

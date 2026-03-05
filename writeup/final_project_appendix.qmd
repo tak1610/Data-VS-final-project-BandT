@@ -1,0 +1,137 @@
+---
+title: "Spatial Patterns in Child Food Hardship and School Nutrition Policy Appendix"
+author: 
+ - "Byeol Choi(byeolchoi98) from section 1"
+ - "Takuma Kazama(tak1610)  from section 1"
+
+format:
+  html:
+    toc: false
+    number-sections: false
+  pdf:
+    toc: false
+    number-sections: false
+
+fontsize: 10pt
+geometry: margin=1in
+---
+# 1. Motivation
+
+In this appendix, we are going to focus on OLS regression, and the main question is as follows.
+- Does higher NSLP spending per school-age child relate to improved outcomes?  
+
+# 2. Data and Construction
+
+For OLS regression, we add additional variables to the master data for more robust analysis (master_merged_with_controls.csv). Detailed information is descrived in README.qmd.
+
+# 3. Regression Analysis
+
+To evaluate the relationship between policy variables and hardship, we estimate OLS models controlling for socioeconomic characteristics.
+
+The specification includes:
+
+- `cep_rate_school`
+- `nslp_total_dollars_per_school_age`
+- Median household income
+- Unemployment rate
+- SNAP participation
+- Family structure
+- Racial/ethnic composition
+
+Example specification:
+
+```{python}
+#| echo: false
+#| eval: false
+
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+
+# ============================================================
+# Load the data
+# ============================================================
+master = pd.read_csv(r"..\data\derived-data\master_state_with_controls.csv")
+
+
+# ============================================================
+# OLS (3 outcomes)
+# ============================================================
+# Scale income for readability
+master["median_hh_income_k"] = master["median_hh_income"] / 1000.0
+
+X_cols = [
+    "cep_rate_school",
+    "nslp_total_dollars_per_school_age",
+    "median_hh_income_k",
+    "unemployment_rate",
+    "snap_household_pct",
+    "single_parent_pct",
+    "pct_black",
+    "pct_hispanic",
+]
+
+for c in X_cols + ["poverty_rate_children", "child_food_insec_rate", "food_insufficiency_weighted"]:
+    master[c] = pd.to_numeric(master[c], errors="coerce")
+
+# Model 1: child poverty
+df1 = master.dropna(subset=["poverty_rate_children"] + X_cols).copy()
+m1 = sm.OLS(df1["poverty_rate_children"], sm.add_constant(df1[X_cols])).fit(cov_type="HC1")
+print("\n====================")
+print("OLS: Child Poverty Rate")
+print("====================")
+print(m1.summary())
+
+# Model 2: child food insecurity
+df2 = master.dropna(subset=["child_food_insec_rate"] + X_cols).copy()
+m2 = sm.OLS(df2["child_food_insec_rate"], sm.add_constant(df2[X_cols])).fit(cov_type="HC1")
+print("\n====================")
+print("OLS: Child Food Insecurity Rate")
+print("====================")
+print(m2.summary())
+
+# Model 3: child food insecurity
+
+df3 = master.dropna(subset=["food_insufficiency_weighted"] + X_cols).copy()
+m3 = sm.OLS(df3["food_insufficiency_weighted"], sm.add_constant(df3[X_cols])).fit(cov_type="HC1")
+print("\n====================")
+print("OLS: Child Food Insufficiency Rate")
+print("====================")
+print(m3.summary())
+```
+
+### Core Findings
+
+- CEP participation: not statistically significant
+- NSLP spending: not statistically significant
+- Median income: strong negative association
+- Unemployment: positive and significant
+- Racial composition variables: correlated with hardship
+- R² ≈ 0.71 (food insufficiency model)
+
+### Interpretation
+
+At the state level, structural economic conditions explain more variation than program intensity measures.
+However, regression alone cannot capture spatial dependence.
+
+# 4. Discussion
+
+### What We Learn
+
+- State-level policy intensity (CEP, NSLP dollars) does not independently predict hardship once controls are included.
+- Economic fundamentals dominate.
+- Spatial clustering reveals regional concentration.
+- Visual mapping adds interpretive depth beyond regression tables.
+
+### Limitations
+
+- State-level aggregation masks within-state disparities.
+- Cross-sectional design prevents causal claims.
+- Policy variables may operate more strongly at district level.
+- Potential multicollinearity among demographic controls.
+
+---
+
+# 5. Conclusion
+
+Child food hardship at the state level appears more strongly associated with structural socioeconomic conditions than with CEP participation or NSLP spending intensity. Yet, the presence of significant spatial clustering indicates that hardship is regionally concentrated, reinforcing the importance of geographically targeted policy approaches and spatially informed analysis
