@@ -5,10 +5,9 @@ This project processes and visualizes data sets related to analysis of the relat
 
 ## Setup
 
-```bash
-conda env create -f environment.yml
-conda activate nslp_analysis
-```
+python -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt
 
 ## Project Structure
 
@@ -123,5 +122,8 @@ data/
 1. Run preprocessing to raw data:
    ```bash
    python code/preprocessing.py
+
+2 Run streamlit
+  streamlit run code/app.py
    ```
 
