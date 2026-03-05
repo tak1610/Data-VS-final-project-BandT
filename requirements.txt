@@ -5,5 +5,4 @@ geopandas
 matplotlib
 altair
 statsmodels
-zipfile
 requests
