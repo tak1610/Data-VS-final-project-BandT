@@ -228,7 +228,7 @@ def build_county_gdf_threepanel(
     """
     cep, pov, vote = load_county_inputs(cep_path, pov_path, vote_path)
 
-    gdf = gpd.read_file(shp_path)
+    gdf = gpd.read_file(shp_path, engine="pyogrio")
 
     required = {"STATEFP", "COUNTYFP"}
     if not required.issubset(set(gdf.columns)):

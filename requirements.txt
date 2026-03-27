@@ -8,4 +8,4 @@ statsmodels
 requests
 pyproj
 shapely
-fiona
+pyogrio
